@@ -8,7 +8,7 @@ permissions:
   actions: read
   contents: write
 concurrency:
-  group: publish-black-controles-2
+  group: publish-black-launcher-5
 jobs:
   publish:
     runs-on: ubuntu-24.04
@@ -20,27 +20,36 @@ jobs:
       - name: Verify successful source build
         run: |
           set -euo pipefail
-          conclusion=$(gh api repos/$GH_REPO/actions/runs/39241809005 --jq .conclusion)
-          sha=$(gh api repos/$GH_REPO/actions/runs/39241809005 --jq .head_sha)
+          conclusion=$(gh api repos/$GH_REPO/actions/runs/39249358203 --jq .conclusion)
+          sha=$(gh api repos/$GH_REPO/actions/runs/39249358203 --jq .head_sha)
           test "$conclusion" = success
-          test "$sha" = f1660e3bbfe090dc9f5ff0e734b5c6578144abc5
+          test "$sha" = 04fc152d1b63d424bb8fa89951fc5b8c11a834f9
       - name: Download compiled APK
         run: |
           set -euo pipefail
-          gh run download 39241809005 --name Black-1.3.1-controles.2 --dir apk
-          test -s apk/Black-1.3.1-controles.2.apk
+          gh run download 39249358203 --name Black-1.3.2-launcher-teste.5 --dir apk
+          test -s apk/Black-1.3.2-launcher-teste.5.apk
       - name: Publish release
         run: |
           set -euo pipefail
           cat > notes.md <<'NOTES'
-          APK Android ARM64 com correções dos controles de toque.
+          Black Android ARM64 com launcher, editor de controles e seletores renovados.
 
-          - Movimento com múltiplos dedos e maior precisão de mira.
-          - Arrastar pelo botão de mira e opção de segurar para mirar.
-          - Toques rápidos preservados e gestos liberados ao pausar ou perder o foco.
+          - Launcher com cartões escuros, cantos arredondados e seletores de arquivos e presets.
+          - Sensibilidade separada para mouse e tela de toque.
+          - Editor de posição, tamanho e visibilidade dos controles no launcher.
+          - Chave ao lado da pausa para abrir o editor dentro do jogo: arraste e toque em SALVAR.
+          - Layout e sensibilidade são recarregados ao retornar para uma sessão aberta.
+          - Analógico disponível nos menus e botão ENTER para confirmar.
 
-          Compilação e testes automatizados dos controles concluídos com sucesso. Gameplay e desempenho ainda precisam ser verificados em aparelhos reais.
+          ## Instalação
+          Este APK mantém o nome Black Preview e o pacote com.racas.black.preview. Atualiza as prévias anteriores e instala ao lado do Black Android original. A assinatura foi conferida com a prévia 4.
 
-          Extraia os arquivos da sua própria cópia do jogo em /storage/emulated/0/Black. O APK não inclui os arquivos do jogo.
+          Autorize o acesso à pasta /storage/emulated/0/Black ou importe sua ISO pelo launcher. Os arquivos do jogo não estão incluídos.
+
+          ## Validação
+          Build concluído com sucesso, 77 verificações dos controles e testes de leitura/gravação do layout entre o editor Java e o jogo nativo. Gameplay e aparência final ainda precisam ser conferidos no aparelho.
           NOTES
-          gh release create v1.3.1-controles.2 apk/Black-1.3.1-controles.2.apk --target f1660e3bbfe090dc9f5ff0e734b5c6578144abc5 --title "Black Android 1.3.1 — Controles" --notes-file notes.md --latest
+          printf '\nSHA-256 do APK: ' >> notes.md
+          sha256sum apk/Black-1.3.2-launcher-teste.5.apk | cut -d' ' -f1 >> notes.md
+          gh release create v1.3.2-launcher-teste.5 apk/Black-1.3.2-launcher-teste.5.apk --target 04fc152d1b63d424bb8fa89951fc5b8c11a834f9 --title "Black Android 1.3.2 — Launcher e controles" --notes-file notes.md --latest
