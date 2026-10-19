@@ -1,0 +1,22 @@
+name: Controls tests
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+    paths:
+      - native/touch.cpp
+      - tests/**
+      - .github/workflows/controls-tests.yml
+permissions:
+  contents: read
+jobs:
+  touch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Touch input regression tests
+        env:
+          BLACK_TEST_SANITIZE: 1
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run-touch-tests.sh

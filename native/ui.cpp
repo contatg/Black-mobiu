@@ -60,6 +60,17 @@ void OnEvent(const SDL_Event& e) {
     int w, h;
     host::WindowPixels(w, h);
     switch (e.type) {
+        case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            g_fingered = false;
+            io.AddFocusEvent(false);
+            io.AddMouseButtonEvent(0, false);
+            io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+            break;
+        case SDL_EVENT_DID_ENTER_FOREGROUND:
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            io.AddFocusEvent(true);
+            break;
         case SDL_EVENT_FINGER_DOWN:
             if (g_fingered) break;
             g_finger = e.tfinger.fingerID;

@@ -48,7 +48,7 @@ bool AimAssist(X86Context&, uint8_t*) { return !input::KeyboardActive(); }
 
 // ebx the player's controller past the game's toggle aim, scopes and all
 void HoldAim(X86Context& ctx, uint8_t*) {
-    if (!game::Opt().hold_aim || !input::KeyboardActive()) return;
+    if (!game::Opt().hold_aim || (!input::KeyboardActive() && !input::TouchActive())) return;
     G<uint8_t>(ctx.ebx + kControllerAimWanted) = G<uint8_t>(ctx.ebx + kControllerAimHeld);
 }
 

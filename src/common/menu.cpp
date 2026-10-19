@@ -249,6 +249,7 @@ constexpr Row kGraphicsRows[] = {
 constexpr Row kTouchRows[] = {
     {Kind::Heading, -1, "TOUCH"},
     {Kind::Value, kTouchSensitivity, "TOUCH SENSITIVITY"},
+    {Kind::Value, kHoldAim, "HOLD TO AIM"},
     {Kind::Value, kTouchLayout, "CONTROLS LAYOUT"},
     {Kind::Value, kTouchOpacity, "CONTROLS OPACITY"},
     {Kind::Value, kTouchSize, "CONTROLS SIZE"},

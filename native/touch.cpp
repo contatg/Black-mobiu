@@ -40,8 +40,8 @@ namespace {
 
 std::atomic<int> g_dx{0};
 std::atomic<int> g_dy{0};
-std::atomic<int> g_touch_dx{0};  // the touch screen's look, scaled by its own sensitivity
-std::atomic<int> g_touch_dy{0};
+std::atomic<float> g_touch_dx{0};  // keep subpixel moves until the game reads them
+std::atomic<float> g_touch_dy{0};
 std::atomic<uint64_t> g_take_ms{0};     // TakeMouse, asked every tick in play
 std::atomic<uint64_t> g_capture_ms{0};  // PressedKey
 std::atomic<bool> g_settle{false};
@@ -325,12 +325,12 @@ void ReleaseCursor() { g_settle = true; }
 bool TakeMouse(float& dx, float& dy) {
     uint64_t now = NowMs();
     bool stale = now - g_take_ms.exchange(now) >= kPlayMs;
-    int x = g_dx.exchange(0), tx = g_touch_dx.exchange(0);
-    int y = g_dy.exchange(0), ty = g_touch_dy.exchange(0);
+    int x = g_dx.exchange(0), y = g_dy.exchange(0);
+    float tx = g_touch_dx.exchange(0), ty = g_touch_dy.exchange(0);
     if ((!x && !y && !tx && !ty) || stale || !Active()) return false;
     const game::Options& o = game::Opt();
-    dx = float(x) * o.mouse_sensitivity + float(tx) * o.touch_sensitivity;
-    dy = float(y) * o.mouse_sensitivity + float(ty) * o.touch_sensitivity;
+    dx = float(x) * o.mouse_sensitivity + tx * o.touch_sensitivity;
+    dy = float(y) * o.mouse_sensitivity + ty * o.touch_sensitivity;
     if (o.invert_mouse) dy = -dy;
     return true;
 }
@@ -526,8 +526,8 @@ struct Button {
 // moves the controls, see the functions at the end
 constexpr Button kButtons[] = {
     {"fire", "Fire", Icon::Bullet, kAnalogRT, When::Play, true},
-    {"fire_left", "Fire (left)", Icon::Bullet, kAnalogRT, When::Play, true},
-    {"aim", "Aim", Icon::Scope, kBit + 7, When::Play},
+    {"fire_left", "Fire (left)", Icon::Bullet, kAnalogRT, When::Play},
+    {"aim", "Aim", Icon::Scope, kBit + 7, When::Play, true},
     {"mode", "Firing mode", Icon::Mode, kBit + 0, When::Play},
     {"melee", "Melee", Icon::Knife, kAnalogB, When::Play},
     {"use", "Use", Icon::Hand, kAnalogX, When::Play},
@@ -584,6 +584,7 @@ constexpr Preset kPresets[] = {
     {"default", "DEFAULT", &kTwoFinger}, {"three", "3 FINGER", &kThreeFinger}, {"four", "4 FINGER", &kFourFinger}};
 
 constexpr float kStickZone = 0.42f;    // share of the width from the left a touch takes the stick in
+constexpr float kStickDeadzone = 0.08f;  // resting thumb jitter, rescaled so the rim still runs at full speed
 constexpr float kLookCounts = 1800.0f;  // mouse counts a swipe across the screen's width turns: 90 degrees
 constexpr uint64_t kShownMs = 8000;     // the controls hide this long after the last touch while a pad is plugged in
 
@@ -596,6 +597,7 @@ constexpr uint64_t kHoldMs = 180;      // a finger still this long is the cursor
 constexpr int kMaxNotches = 8;         // notches a swipe runs ahead of the menu
 
 struct Finger {
+    SDL_TouchID touch = 0;
     SDL_FingerID id = 0;
     Role role = Role::None;
     size_t button = 0;     // or kStick, dragged in the editor
@@ -604,11 +606,13 @@ struct Finger {
     MenuTouch menu = MenuTouch::Undecided;
     uint64_t down_ms = 0;
     float notch_y = 0;  // a scroll's place at its last notch
+    bool sampled = false;  // a button released between game polls still gets one press
 };
 
 std::mutex g_lock;
 std::vector<Finger> g_fingers;
 bool g_pressed[kButtonCount] = {};
+bool g_taps[kButtonCount] = {};
 float g_stick_x = 0, g_stick_y = 0;  // -1 to 1, y up
 float g_cursor_x = 0, g_cursor_y = 0;  // the menu cursor, pixels
 bool g_cursor_down = false;
@@ -757,26 +761,31 @@ void CloseEditor(bool keep) {
 
 // the button under a point, kButtonCount for none
 size_t HitButton(float x, float y) {
+    size_t best = kButtonCount;
+    float nearest = 1.25f * 1.25f;
     for (size_t i = 0; i < kButtonCount; i++) {
         if (!ButtonShown(i)) continue;
         float cx, cy;
         Centre(i, cx, cy);
-        float r = Radius(i) * 1.25f;  // a little slack around the drawn circle
-        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) return i;
+        float r = Radius(i);
+        float distance = ((x - cx) * (x - cx) + (y - cy) * (y - cy)) / (r * r);
+        // overlapping hit areas choose the circle the finger is nearest to, not the first in the list
+        if (distance <= nearest) {
+            nearest = distance;
+            best = i;
+        }
     }
-    return kButtonCount;
+    return best;
 }
 
 void UpdateStick(const Finger& f) {
     float r = Radius(kStick);
     float dx = (f.x - f.x0) / r, dy = (f.y - f.y0) / r;
     float len = std::sqrt(dx * dx + dy * dy);
-    if (len > 1) {
-        dx /= len;
-        dy /= len;
-    }
-    g_stick_x = dx;
-    g_stick_y = -dy;
+    float amount = std::clamp((len - kStickDeadzone) / (1.0f - kStickDeadzone), 0.0f, 1.0f);
+    float scale = len > 0 ? amount / len : 0;
+    g_stick_x = dx * scale;
+    g_stick_y = -dy * scale;
 }
 
 void Recount() {
@@ -784,9 +793,49 @@ void Recount() {
     bool stick = false;
     for (const Finger& f : g_fingers) {
         if (f.role == Role::Button) g_pressed[f.button] = true;
-        if (f.role == Role::Stick) stick = true;
+        if (f.role == Role::Stick) {
+            UpdateStick(f);
+            stick = true;
+        }
     }
     if (!stick) g_stick_x = g_stick_y = 0;
+}
+
+int LookPriority(const Finger& f) {
+    if (f.role == Role::Look) return 3;
+    if (f.role != Role::Button || !kButtons[f.button].look) return 0;
+    return f.button == 0 ? 2 : 1;  // an aiming thumb takes priority over an index finger holding ADS
+}
+
+// only one finger turns the view; another fire/aim finger can take over after it lifts, without adding two drags
+bool OwnsLook(const Finger& f) {
+    auto owner = std::max_element(g_fingers.begin(), g_fingers.end(),
+                                 [](const Finger& a, const Finger& b) { return LookPriority(a) < LookPriority(b); });
+    return owner != g_fingers.end() && LookPriority(*owner) && &*owner == &f;
+}
+
+void CancelFingers() {
+    g_fingers.clear();
+    std::fill(std::begin(g_pressed), std::end(g_pressed), false);
+    std::fill(std::begin(g_taps), std::end(g_taps), false);
+    g_stick_x = g_stick_y = 0;
+    g_cursor_down = false;
+    g_cursor_tap_until = 0;
+    g_back_until = 0;
+    input::g_touch_dx = input::g_touch_dy = 0;
+    input::g_dx = input::g_dy = 0;
+    input::g_wheel = 0;
+    input::g_confirm_until = 0;
+}
+
+// a finger held across pause, a panel or the layout editor must lift and start again in the new context
+void SyncContext() {
+    int context = !host::Foreground() ? 0 : g_editing ? 1 : app::MenuOpen() ? 2 : InMenus() ? 3 : 4;
+    static int previous = -1;
+    if (context != previous) {
+        CancelFingers();
+        previous = context;
+    }
 }
 
 void Resize(size_t i, float r) { g_layout[i].r = std::clamp(r, kMinRadius, kMaxRadius); }
@@ -826,7 +875,8 @@ void EditDown(Finger& f, float x, float y) {
     }
     size_t b = HitButton(x, y);
     float sx = g_layout[kStick].x * Width(), sy = g_layout[kStick].y * Height(), sr = Radius(kStick);
-    if (b == kButtonCount && (x - sx) * (x - sx) + (y - sy) * (y - sy) <= sr * sr) b = kStick;
+    if (b == kButtonCount)
+        b = (x - sx) * (x - sx) + (y - sy) * (y - sy) <= sr * sr ? kStick : kStick + 1;
     if (b > kStick) {
         g_selected = -1;
         return;
@@ -838,8 +888,9 @@ void EditDown(Finger& f, float x, float y) {
     f.y0 = y - g_layout[b].y * Height();
 }
 
-void FingerDown(SDL_FingerID id, float x, float y) {
+void FingerDown(SDL_TouchID touch, SDL_FingerID id, float x, float y) {
     Finger f;
+    f.touch = touch;
     f.id = id;
     f.x0 = f.x = x;
     f.y0 = f.y = y;
@@ -849,6 +900,7 @@ void FingerDown(SDL_FingerID id, float x, float y) {
         return;
     }
     input::g_touch = true;
+    input::g_keyboard = false;
     size_t b = HitButton(x, y);
     if (b < kButtonCount) {
         f.role = Role::Button;
@@ -862,7 +914,9 @@ void FingerDown(SDL_FingerID id, float x, float y) {
         f.down_ms = NowMs();
         g_cursor_touch = true;
     } else if (x < Width() * kStickZone) {
-        f.role = Role::Stick;
+        // the first thumb owns movement until it lifts; another left-side finger cannot steal it
+        if (std::none_of(g_fingers.begin(), g_fingers.end(), [](const Finger& other) { return other.role == Role::Stick; }))
+            f.role = Role::Stick;
     } else {
         f.role = Role::Look;
     }
@@ -914,9 +968,9 @@ void MenuHolds() {
         if (f.role == Role::Cursor && f.menu == MenuTouch::Undecided && now - f.down_ms >= kHoldMs) MenuHold(f);
 }
 
-void FingerMove(SDL_FingerID id, float x, float y) {
+void FingerMove(SDL_TouchID touch, SDL_FingerID id, float x, float y) {
     for (Finger& f : g_fingers) {
-        if (f.id != id) continue;
+        if (f.touch != touch || f.id != id) continue;
         float dx = x - f.x, dy = y - f.y;
         f.x = x;
         f.y = y;
@@ -935,19 +989,22 @@ void FingerMove(SDL_FingerID id, float x, float y) {
             }
         }
         if (f.role == Role::Stick) UpdateStick(f);
-        if (f.role == Role::Look || (f.role == Role::Button && kButtons[f.button].look)) {
+        if (LookPriority(f) && OwnsLook(f)) {
             float k = kLookCounts / Width();
-            input::g_touch_dx += int(std::lround(dx * k));
-            input::g_touch_dy += int(std::lround(dy * k));
+            input::g_touch_dx += dx * k;
+            input::g_touch_dy += dy * k;
         }
         if (f.role == Role::Cursor) MenuMove(f);
     }
 }
 
-void FingerUp(SDL_FingerID id) {
+void FingerUp(SDL_TouchID touch, SDL_FingerID id, bool canceled = false) {
     for (const Finger& f : g_fingers) {
-        if (f.id != id || f.role != Role::Cursor) continue;
-        if (f.menu == MenuTouch::Undecided) {
+        if (f.touch != touch || f.id != id) continue;
+        if (!canceled && f.role == Role::Button && !f.sampled && kButtons[f.button].press >= 0)
+            g_taps[f.button] = true;
+        if (f.role != Role::Cursor) continue;
+        if (!canceled && f.menu == MenuTouch::Undecided) {
             // a tap: the cursor goes there and clicks
             g_cursor_x = f.x;
             g_cursor_y = f.y;
@@ -955,7 +1012,7 @@ void FingerUp(SDL_FingerID id) {
         }
         if (f.menu != MenuTouch::Scroll) g_cursor_down = false;
     }
-    std::erase_if(g_fingers, [id](const Finger& f) { return f.id == id; });
+    std::erase_if(g_fingers, [touch, id](const Finger& f) { return f.touch == touch && f.id == id; });
     Recount();
 }
 
@@ -998,6 +1055,16 @@ void KeyEvent(const SDL_KeyboardEvent& k) {
 
 bool OnEvent(const SDL_Event& e) {
     switch (e.type) {
+        case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        case SDL_EVENT_DID_ENTER_BACKGROUND:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+            std::lock_guard lock(g_lock);
+            CancelFingers();
+            for (auto& key : input::g_down) key = false;
+            input::g_settle = true;
+            return false;
+        }
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
             KeyEvent(e.key);
@@ -1042,20 +1109,26 @@ bool OnEvent(const SDL_Event& e) {
             float x = e.tfinger.x * Width(), y = e.tfinger.y * Height();
             std::lock_guard lock(g_lock);
             EnsureLayout();
+            SyncContext();
+            if (!host::Foreground()) return true;
             if (e.type == SDL_EVENT_FINGER_DOWN) {
                 // the settings panel takes the touches, but for the button that closes it
                 if (app::MenuOpen() && !g_editing) {
                     size_t b = HitButton(x, y);
                     if (b == kButtonCount || kButtons[b].press != kPanel) return false;
                 }
-                FingerDown(e.tfinger.fingerID, x, y);
+                FingerUp(e.tfinger.touchID, e.tfinger.fingerID, true);
+                FingerDown(e.tfinger.touchID, e.tfinger.fingerID, x, y);
                 return true;
             }
             bool ours = std::any_of(g_fingers.begin(), g_fingers.end(),
-                                    [&](const Finger& f) { return f.id == e.tfinger.fingerID; });
+                                    [&](const Finger& f) {
+                                        return f.touch == e.tfinger.touchID && f.id == e.tfinger.fingerID;
+                                    });
             if (!ours) return false;
-            if (e.type == SDL_EVENT_FINGER_MOTION) FingerMove(e.tfinger.fingerID, x, y);
-            else FingerUp(e.tfinger.fingerID);
+            if (e.type != SDL_EVENT_FINGER_CANCELED) FingerMove(e.tfinger.touchID, e.tfinger.fingerID, x, y);
+            if (e.type != SDL_EVENT_FINGER_MOTION)
+                FingerUp(e.tfinger.touchID, e.tfinger.fingerID, e.type == SDL_EVENT_FINGER_CANCELED);
             return true;
         }
         default:
@@ -1064,17 +1137,24 @@ bool OnEvent(const SDL_Event& e) {
 }
 
 void Apply(int port, input::Pad& pad) {
-    if (port != 0 || g_editing) return;
+    if (port != 0) return;
     std::lock_guard lock(g_lock);
+    SyncContext();
+    if (g_editing || !input::Active()) return;
     bool used = false;
     for (size_t i = 0; i < kButtonCount; i++) {
-        if (!g_pressed[i]) continue;
+        bool pressed = g_pressed[i] || g_taps[i];
+        // consume a quick tap even while another finger is still holding the same button
+        g_taps[i] = false;
+        if (!pressed || !ButtonShown(i)) continue;
         int p = kButtons[i].press;
         if (p < 0) continue;
         used = true;
         if (p < kBit) pad.analog[p] = 0xFF;
         else pad.buttons |= uint16_t(1u << (p - kBit));
     }
+    for (Finger& f : g_fingers)
+        if (f.role == Role::Button) f.sampled = true;
     if (NowMs() < g_back_until) {
         used = true;
         if (InMenus()) pad.analog[kAnalogB] = 0xFF;
@@ -1306,6 +1386,7 @@ void DrawEditorBar(ImDrawList* dl, float th) {
 void Draw() {
     std::lock_guard lock(g_lock);
     EnsureLayout();
+    SyncContext();
     bool editing = g_editing;
     if (!editing && !Shown()) return;
     ImDrawList* dl = ImGui::GetForegroundDrawList();
@@ -1417,9 +1498,7 @@ void EditLayout() {
     std::lock_guard lock(g_lock);
     EnsureLayout();
     // the touch that picked the row is the menu's, not the editor's
-    g_fingers.clear();
-    g_cursor_down = false;
-    Recount();
+    CancelFingers();
     OpenEditor();
 }
 
@@ -1448,6 +1527,10 @@ bool Firing() {
 
 // main thread, each turn of the event loop: the on-screen keyboard while a name is typed
 void Pump() {
+    {
+        std::lock_guard lock(g_lock);
+        SyncContext();
+    }
     gyro::Pump();
     // a mouse in play is captured as on a PC: no pointer over the picture and no screen edge to stop a turn. Let go
     // in the menus, the panel, the background and once the touch screen is used; asked again whenever Android took

@@ -40,6 +40,12 @@ The settings are in the game's own options menu, each page under its own button:
 - **Edit Controls Position**: drag each control where you want it. To resize one, select it and tap **−** or **+**, or pinch it with a second finger.
 - **Motion Controls**: aim with the gyroscope by turning the phone, or a DualShock 4 or DualSense on Android 12 and newer, either always or only while firing, with adjustable sensitivity. The controller's gyroscope is used while you play with the controller, the phone's while you use the touch screen.
 
+This fork fixes movement ownership with multiple fingers, preserves small aiming movements, supports dragging from
+the aim button and exposes **Hold to Aim** on the touch page. Left-side fire does not move the camera; a free-look
+thumb takes priority over fingers holding fire or aim. Short button taps are retained until the next input poll.
+Pause, focus loss and canceled touches release the old gestures. Saved layout positions are preserved.
+See [CONTROLES.md](CONTROLES.md) for Portuguese build instructions and the test status.
+
 ### Other Input
 - **Controller**: any controller SDL3 supports, with rumble. The touch buttons hide while a controller is in use. Controllers that some phones pass on as a virtual device (a DualShock 4 on MIUI, for example) work too.
 - **Keyboard and Mouse**, with rebindable controls, mouse sensitivity and invert look. In play the mouse is captured as on a PC: no pointer on the screen, and the view keeps turning past the screen's edge.
