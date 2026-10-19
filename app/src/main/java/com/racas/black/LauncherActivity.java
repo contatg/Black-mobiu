@@ -43,6 +43,7 @@ public final class LauncherActivity extends Activity {
     private int page;
     private boolean editing, importing;
     private GameImporter importer;
+    private UpdateChecker.Release availableUpdate;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -55,6 +56,11 @@ public final class LauncherActivity extends Activity {
             loadSettings();
             page = state != null ? state.getInt("page", 0) : 0;
             showPage(page);
+            if(UpdateChecker.automatic(this))UpdateChecker.check(this,false,(release,failed)->{
+                if(isFinishing()||isDestroyed())return;
+                availableUpdate=release;
+                if(release!=null&&page==0&&!editing&&!importing)showPage(0);
+            });
         } catch (IOException e) {
             new AlertDialog.Builder(this).setTitle("Não foi possível ler as configurações")
                     .setMessage(e.getMessage()).setPositiveButton("Fechar", (d, w) -> finish()).show();
@@ -150,6 +156,8 @@ public final class LauncherActivity extends Activity {
             rail.addView(b,new LinearLayout.LayoutParams(-1,dp(48)));
         }
         rail.addView(new View(this),new LinearLayout.LayoutParams(1,0,1));
+        Button about=button("Sobre / atualizar",false,()->central(true));about.setTextSize(10);
+        rail.addView(about,new LinearLayout.LayoutParams(-1,dp(34)));gap(rail,5);
         rail.addView(label("PRÉVIA DO LAUNCHER",9,MUTED));
         TextView version = label("v"+UpdateChecker.installedVersion(this),9,MUTED); version.setPadding(0,dp(6),0,0); rail.addView(version);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
@@ -159,6 +167,11 @@ public final class LauncherActivity extends Activity {
     }
     private void home() {
         heading("PRONTO PARA A MISSÃO", "Pronto para entrar.", "Prepare seus controles e entre no jogo quando quiser.");
+        if(availableUpdate!=null){
+            LinearLayout update=card();update.addView(title("Nova versão disponível",18));
+            update.addView(label(availableUpdate.tag,12,GOLD));gap(update,8);
+            update.addView(button("Ver novidades e atualizar   →",true,()->central(false)));
+        }
         LinearLayout hero=card();
         TextView tag=label("BLACK  /  ANDROID",10,GOLD); tag.setLetterSpacing(.2f); hero.addView(tag); gap(hero,6);
         TextView name=title("BLACK",56); name.setLetterSpacing(.14f); hero.addView(name);
@@ -174,6 +187,10 @@ public final class LauncherActivity extends Activity {
         gap(content,12);
         TextView info=label("Gráficos, resolução e filtro anisotrópico: ajuste no menu de opções dentro do jogo.",11,MUTED); content.addView(info);
         gap(content,10); content.addView(button("Gerenciar arquivos do jogo",false,this::addGame));
+        gap(content,10);LinearLayout app=new LinearLayout(this);content.addView(app);
+        app.addView(button("Atualizações",false,()->central(false)),new LinearLayout.LayoutParams(0,dp(44),1));
+        LinearLayout.LayoutParams infoButton=new LinearLayout.LayoutParams(0,dp(44),1);infoButton.leftMargin=dp(10);
+        app.addView(button("Sobre o Black",false,()->central(true)),infoButton);
     }
     private void sensitivity() {
         heading("AJUSTE FINO", "Sua mira, no seu ritmo.", "As alterações são salvas e aplicadas ao iniciar o jogo.");
@@ -303,6 +320,7 @@ public final class LauncherActivity extends Activity {
         if(uri==null){importing=false;showPage(0);return;}
         importer.copy(uri,new File(own,"assets"),ok->{importing=false;if(!isFinishing()&&!isDestroyed())showPage(0);});
     }
+    private void central(boolean about){startActivity(new Intent(this,UpdateActivity.class).putExtra(UpdateActivity.ABOUT,about));}
     private void launch() {
         startActivity(new Intent(this,BlackActivity.class));
         // Native input reloads the launcher files when this session resumes.

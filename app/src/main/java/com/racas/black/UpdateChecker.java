@@ -9,6 +9,8 @@ import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.IOException;
+import java.util.Locale;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +22,7 @@ import org.json.JSONObject;
 // newer than the one installed and the player has not skipped it, and from the options menu, where the answer is
 // given whatever it is.
 final class UpdateChecker {
-    static final String REPO = "RanggaCasper/Black-Android";
+    static final String REPO = "contatg/Black-mobiu";
     private static final String LATEST = "https://api.github.com/repos/" + REPO + "/releases/latest";
     private static final String TAG = "BlackUpdate";
     private static final int TIMEOUT_MS = 8000;
@@ -33,7 +35,9 @@ final class UpdateChecker {
         String name;     // Black for Android v1.2.3
         String page;     // the release on GitHub
         String apk;      // the APK's download, or null
-        String changes;  // the "What's Changed" list as plain text, or ""
+        String changes;
+        String sha256;
+        long size;
     }
 
     interface Listener {
@@ -63,6 +67,7 @@ final class UpdateChecker {
                 Log.w(TAG, "no update check: " + e);  // offline, rate limited: try again next launch
                 failed = true;
             }
+            if(!failed)prefs.edit().putLong("last_checked",System.currentTimeMillis()).apply();
             Release found = newer;
             boolean f = failed;
             main.post(() -> listener.onResult(found, f));
@@ -89,7 +94,9 @@ final class UpdateChecker {
         c.setRequestProperty("Accept", "application/vnd.github+json");
         c.setRequestProperty("User-Agent", "Black-Android");
         try {
-            if (c.getResponseCode() != 200) return null;  // 404 when there is no release yet
+            int code=c.getResponseCode();
+            if(code==404)return null;
+            if(code!=200)throw new IOException("GitHub HTTP "+code);
             JSONObject j = new JSONObject(read(c.getInputStream()));
             Release r = new Release();
             r.tag = j.getString("tag_name");
@@ -99,8 +106,11 @@ final class UpdateChecker {
             JSONArray assets = j.optJSONArray("assets");
             for (int i = 0; assets != null && i < assets.length(); i++) {
                 JSONObject a = assets.getJSONObject(i);
-                if (a.optString("name").toLowerCase().endsWith(".apk")) {
-                    r.apk = a.optString("browser_download_url", null);
+                if (a.optString("name").toLowerCase(Locale.ROOT).endsWith(".apk")) {
+                    String url=a.optString("browser_download_url", "");
+                    if(!url.startsWith("https://github.com/"+REPO+"/releases/download/"))continue;
+                    r.apk=url;r.size=a.optLong("size",0);
+                    r.sha256=a.optString("digest","");
                     break;
                 }
             }
@@ -120,51 +130,24 @@ final class UpdateChecker {
         }
     }
 
-    // GitHub's generated "What's Changed" list, without the authors' links: "* fix: x by @a in https://…" → "• fix: x"
+    static boolean automatic(Context app){return app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getBoolean("auto_check",true);}
+    static void automatic(Context app,boolean enabled){app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean("auto_check",enabled).apply();}
+
     private static String changes(String body) {
-        int at = body.indexOf("## What's Changed");
-        if (at < 0) return "";
-        StringBuilder sb = new StringBuilder();
-        int lines = 0;
-        for (String line : body.substring(at).split("\r?\n")) {
-            line = line.trim();
-            if (line.startsWith("**Full Changelog**") || (line.startsWith("## ") && sb.length() > 0)) break;
-            if (!line.startsWith("* ") && !line.startsWith("- ")) continue;
-            line = line.substring(2).replaceAll(" by @\\S+ in https://\\S+$", "").replaceAll(" in https://\\S+$", "");
-            if (++lines > 10) {
-                sb.append("• …\n");
-                break;
-            }
-            sb.append("• ").append(line).append('\n');
+        StringBuilder text=new StringBuilder();int count=0;
+        for(String line:body.split("\\r?\\n")){
+            line=line.trim();
+            if(line.startsWith("## ")&&text.length()>0)break;
+            if(!line.startsWith("- ")&&!line.startsWith("* "))continue;
+            line=line.substring(2).replaceAll(" by @\\S+ in https://\\S+$","").replace("`","");
+            if(++count>10)break;
+            text.append("• ").append(line).append('\n');
         }
-        return sb.toString().trim();
-    }
-
-    // dotted numbers, "v" and anything after "-" left out: v1.2.10 > 1.2.9, 1.0 == 1.0.0
-    static int compare(String a, String b) {
-        int[] x = parts(a), y = parts(b);
-        for (int i = 0; i < Math.max(x.length, y.length); i++) {
-            int p = i < x.length ? x[i] : 0, q = i < y.length ? y[i] : 0;
-            if (p != q) return Integer.compare(p, q);
+        if(text.length()==0){
+            String clean=body.replaceAll("(?m)^#+\\s*","").replace("`","").trim();
+            return clean.length()>1400?clean.substring(0,1400)+"…":clean;
         }
-        return 0;
+        return text.toString().trim();
     }
-
-    private static int[] parts(String v) {
-        if (v == null) return new int[0];
-        v = v.trim();
-        if (v.startsWith("v") || v.startsWith("V")) v = v.substring(1);
-        int dash = v.indexOf('-');
-        if (dash >= 0) v = v.substring(0, dash);
-        String[] s = v.split("\\.");
-        int[] n = new int[s.length];
-        for (int i = 0; i < s.length; i++) {
-            try {
-                n[i] = Integer.parseInt(s[i].replaceAll("\\D.*", ""));
-            } catch (NumberFormatException e) {
-                n[i] = 0;
-            }
-        }
-        return n;
-    }
+    static int compare(String a,String b){return ReleaseVersion.compare(a,b);}
 }

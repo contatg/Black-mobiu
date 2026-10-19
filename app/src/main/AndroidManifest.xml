@@ -10,6 +10,7 @@
 
     <!-- system link over the LAN -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- controllers SDL reads itself, and their rumble -->
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -30,6 +31,11 @@
         android:appCategory="game"
         android:isGame="true"
         android:theme="@style/BlackTheme">
+
+        <activity android:name=".UpdateActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity android:name=".LauncherActivity"
             android:exported="true"

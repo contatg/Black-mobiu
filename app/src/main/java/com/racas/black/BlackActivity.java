@@ -25,7 +25,7 @@ import org.libsdl.app.SDLControllerManager;
 // (/storage/emulated/0/Black). Reading it needs all files access, a special access Android grants on a settings page
 // of its own, never among the app's ordinary permissions. This asks for it and says where the game goes, each time
 // the app comes back without them; the game itself waits and starts as soon as it finds the files.
-// At launch it also asks GitHub for a newer release (UpdateChecker) and tells of it once nothing else is asked.
+// The launcher checks updates; the in-game update action opens the same update screen.
 public class BlackActivity extends SDLActivity {
     static final String SHARED = "Black";
 
@@ -49,12 +49,7 @@ public class BlackActivity extends SDLActivity {
             if (v != null) v.setOnCapturedPointerListener(BlackActivity::onCapturedPointer);
         File own = getExternalFilesDir(null);
         if (own != null) new File(own, "assets").mkdirs();
-        // every launch: a newer release is shown once nothing else is asked
-        UpdateChecker.check(this, false, (r, failed) -> {
-            if (r == null) return;
-            update = r;
-            tellOfUpdate();
-        });
+
     }
 
     // A controller some phones' game services pass on as a virtual device (MIUI's took a DualShock 4 on a Redmi Note
@@ -124,27 +119,7 @@ public class BlackActivity extends SDLActivity {
 
     // CHECK FOR UPDATES in the options menu, from the game's thread: the answer always shows, up to date or offline
     public void checkForUpdates() {
-        runOnUiThread(() -> {
-            if (checking) return;
-            checking = true;
-            Toast.makeText(this, "Checking for updates…", Toast.LENGTH_SHORT).show();
-            UpdateChecker.check(this, true, (r, failed) -> {
-                checking = false;
-                if (r != null) {
-                    update = r;
-                    tellOfUpdate();
-                    return;
-                }
-                if (isFinishing() || (dialog != null && dialog.isShowing())) return;
-                String msg = failed ? "Couldn't reach GitHub. Check your internet connection and try again."
-                                    : "You have the latest version (" + UpdateChecker.installedVersion(this) + ").";
-                dialog = new AlertDialog.Builder(this)
-                        .setTitle(failed ? "Update check failed" : "No update")
-                        .setMessage(msg)
-                        .setPositiveButton("OK", null)
-                        .show();
-            });
-        });
+        runOnUiThread(() -> startActivity(new Intent(this,UpdateActivity.class)));
     }
 
     @Override
