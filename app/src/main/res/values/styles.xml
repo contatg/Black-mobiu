@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="BlackTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#EFB85A</item>
+        <item name="android:colorBackground">#0B0D10</item>
+        <item name="android:textColorPrimary">#F2F1E9</item>
+        <item name="android:textColorSecondary">#9DA5AB</item>
+        <item name="android:alertDialogTheme">@style/BlackDialog</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:navigationBarColor">#0B0D10</item>
+    </style>
+    <style name="BlackDialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#EFB85A</item>
+        <item name="android:windowBackground">@drawable/dialog_panel</item>
+        <item name="android:textColorPrimary">#F2F1E9</item>
+        <item name="android:textColorSecondary">#9DA5AB</item>
+        <item name="android:backgroundDimAmount">0.65</item>
+    </style>
+</resources>

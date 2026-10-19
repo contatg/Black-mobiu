@@ -509,9 +509,9 @@ enum class Role : uint8_t { None, Stick, Look, Button, Cursor, Drag, Pinch };
 
 // a control of the touch layout: what it shows and presses, on the controller (analog 0-7, button bits from 8) or on
 // the host. Where it sits is the layout's, which the player edits and picks presets for
-enum : int { kGyro = -2, kPanel = -1, kAnalogA = 0, kAnalogB = 1, kAnalogX = 2, kAnalogY = 3, kAnalogLT = 6, kAnalogRT = 7 };
+enum : int { kEdit = -3, kGyro = -2, kPanel = -1, kAnalogA = 0, kAnalogB = 1, kAnalogX = 2, kAnalogY = 3, kAnalogLT = 6, kAnalogRT = 7 };
 constexpr int kBit = 8;  // kBit + n: buttons bit n (dpad up down left right, start, back, left thumb, right thumb)
-enum class Icon : uint8_t { Bullet, Scope, Mode, Reload, Crouch, Knife, Hand, Grenade, Swap, Health, Map, Pause, Gear, Back, Gyro, Move, Suppressor, Confirm };
+enum class Icon : uint8_t { Bullet, Scope, Mode, Reload, Crouch, Knife, Hand, Grenade, Swap, Health, Map, Pause, Gear, Back, Gyro, Move, Suppressor, Confirm, Wrench };
 enum class When : uint8_t { Play, Menus, Both };
 struct Button {
     const char* id;     // its key in layout.toml
@@ -542,6 +542,7 @@ constexpr Button kButtons[] = {
     {"back", "Back", Icon::Back, kAnalogB, When::Menus, false, true},
     {"suppressor", "Suppressor", Icon::Suppressor, kAnalogY, When::Play},
     {"confirm", "Enter", Icon::Confirm, kAnalogA, When::Menus, false, true},
+    {"edit", "Edit controls", Icon::Wrench, kEdit, When::Both, false, true},
 };
 constexpr size_t kButtonCount = std::size(kButtons);
 constexpr size_t kStick = kButtonCount;  // the stick's place, after the buttons'
@@ -558,7 +559,7 @@ constexpr Layout kTwoFinger = {{
     {0.843f, 0.56f, 0.05f}, {0.789f, 0.40f, 0.055f}, {0.784f, 0.70f, 0.05f}, {0.838f, 0.84f, 0.055f},
     {0.964f, 0.88f, 0.05f}, {0.50f, 0.90f, 0.05f}, {0.559f, 0.90f, 0.045f}, {0.473f, 0.07f, 0.04f},
     {0.527f, 0.07f, 0.04f}, {0.419f, 0.07f, 0.04f},
-    {0.036f, 0.08f, 0.045f}, {0.70f, 0.56f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.108f, 0.70f, 0.12f},
+    {0.036f, 0.08f, 0.045f}, {0.70f, 0.56f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.585f, 0.07f, 0.035f}, {0.108f, 0.70f, 0.12f},
 }};
 // claw with the left index finger: fire at the top left, the right thumb turns and aims
 constexpr Layout kThreeFinger = {{
@@ -566,7 +567,7 @@ constexpr Layout kThreeFinger = {{
     {0.80f, 0.60f, 0.045f}, {0.765f, 0.40f, 0.05f}, {0.745f, 0.76f, 0.045f}, {0.84f, 0.87f, 0.05f},
     {0.955f, 0.88f, 0.05f}, {0.50f, 0.90f, 0.05f}, {0.559f, 0.90f, 0.045f}, {0.473f, 0.07f, 0.04f},
     {0.527f, 0.07f, 0.04f}, {0.419f, 0.07f, 0.04f},
-    {0.036f, 0.08f, 0.045f}, {0.69f, 0.56f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.13f, 0.72f, 0.12f},
+    {0.036f, 0.08f, 0.045f}, {0.69f, 0.56f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.585f, 0.07f, 0.035f}, {0.13f, 0.72f, 0.12f},
 }};
 // both index fingers on top: fire at the top left, aim and crouch at the top right
 constexpr Layout kFourFinger = {{
@@ -574,7 +575,7 @@ constexpr Layout kFourFinger = {{
     {0.78f, 0.55f, 0.045f}, {0.73f, 0.38f, 0.05f}, {0.72f, 0.75f, 0.045f}, {0.80f, 0.87f, 0.05f},
     {0.83f, 0.24f, 0.05f}, {0.50f, 0.90f, 0.05f}, {0.559f, 0.90f, 0.045f}, {0.473f, 0.07f, 0.04f},
     {0.527f, 0.07f, 0.04f}, {0.419f, 0.07f, 0.04f},
-    {0.036f, 0.08f, 0.045f}, {0.655f, 0.55f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.13f, 0.72f, 0.12f},
+    {0.036f, 0.08f, 0.045f}, {0.655f, 0.55f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.585f, 0.07f, 0.035f}, {0.13f, 0.72f, 0.12f},
 }};
 struct Preset {
     const char* id;
@@ -629,6 +630,15 @@ size_t g_preset = 0;
 float g_opacity = 0.85f;
 float g_scale = 1.0f;  // every control's size, on top of its own
 bool g_loaded = false;
+std::atomic<bool> g_reload_layout{false};
+std::atomic<bool> g_reload_input{false};
+struct LayoutVersion {
+    std::filesystem::file_time_type time{};
+    uintmax_t size = 0;
+    bool exists = false;
+    bool operator==(const LayoutVersion&) const = default;
+};
+LayoutVersion g_layout_version;
 // the editor: the layout before it opened (for Cancel), the control picked
 std::atomic<bool> g_editing{false};
 Layout g_before = kTwoFinger;
@@ -649,7 +659,15 @@ float Height() {
 
 std::filesystem::path LayoutFile() { return app::ExeDir() / "layout.toml"; }
 
-void LoadLayout() {
+LayoutVersion DiskLayoutVersion() {
+    std::error_code error;
+    auto time = std::filesystem::last_write_time(LayoutFile(), error);
+    if (error) return {};
+    auto size = std::filesystem::file_size(LayoutFile(), error);
+    return error ? LayoutVersion{} : LayoutVersion{time, size, true};
+}
+
+bool LoadLayout() {
     g_loaded = true;
     try {
         toml::table t = toml::parse_file(LayoutFile().string());
@@ -669,7 +687,9 @@ void LoadLayout() {
             pl.r = std::clamp(float((*p)["r"].value_or(double(pl.r))), 0.02f, 0.25f);
             pl.hidden = (*p)["hidden"].value_or(false) && i != kStick && !kButtons[i].keep;
         }
+        return true;
     } catch (...) {
+        return false;
     }
 }
 
@@ -683,10 +703,42 @@ void SaveLayout() {
     toml::table t{{"preset", kPresets[g_preset].id}, {"opacity", double(g_opacity)}, {"scale", double(g_scale)},
                   {"controls", controls}};
     std::ofstream(LayoutFile()) << t << "\n";
+    g_layout_version = DiskLayoutVersion();
 }
 
+void CancelFingers();
+
 void EnsureLayout() {
-    if (!g_loaded) LoadLayout();
+    if (!g_loaded) {
+        LoadLayout();
+        g_layout_version = DiskLayoutVersion();
+        g_reload_layout = false;
+        return;
+    }
+    if (!g_reload_layout.exchange(false)) return;
+    LayoutVersion version = DiskLayoutVersion();
+    if (version == g_layout_version || !version.exists) return;
+    if (LoadLayout()) {
+        g_layout_version = version;
+        g_editing = false;
+        g_selected = -1;
+        CancelFingers();
+    }
+}
+
+// Applied by the game input poll, rather than the Android/UI thread.
+void ReloadLauncherInput() {
+    if (!g_reload_input.exchange(false)) return;
+    try {
+        toml::table t = toml::parse_file((app::ExeDir() / "black.toml").string());
+        auto sensitivity = [&](const char* key, float current) {
+            float value = float(t[key].value_or(double(current)));
+            return std::isfinite(value) ? std::clamp(value, 0.1f, 5.0f) : current;
+        };
+        game::Opt().mouse_sensitivity = sensitivity("mouse_sensitivity", game::Opt().mouse_sensitivity);
+        game::Opt().touch_sensitivity = sensitivity("touch_sensitivity", game::Opt().touch_sensitivity);
+    } catch (...) {
+    }
 }
 
 void OpenEditor() {
@@ -714,7 +766,7 @@ void Centre(size_t i, float& cx, float& cy) {
 float Radius(size_t i) { return g_layout[i].r * g_scale * Height(); }
 
 // the editor's bar at the top: Reset, smaller and bigger for the picked control, Cancel, Done, in screen shares
-constexpr const char* kBarLabels[] = {"RESET", "-", "+", "CANCEL", "DONE"};
+constexpr const char* kBarLabels[] = {"REDEFINIR", "-", "+", "CANCELAR", "SALVAR"};
 enum { kBarReset, kBarSmaller, kBarBigger, kBarCancel, kBarDone, kBarCount };
 constexpr float kBarY = 0.17f, kBarH = 0.09f, kBarW = 0.13f, kBarGap = 0.02f;
 constexpr float kBarSizeW = 0.07f;                       // the - and + buttons
@@ -911,6 +963,11 @@ void FingerDown(SDL_TouchID touch, SDL_FingerID id, float x, float y) {
             g_cursor_down = false;
             g_cursor_tap_until = 0;
         }
+        if (kButtons[b].press == kEdit) {
+            CancelFingers();
+            OpenEditor();
+            return;
+        }
         if (kButtons[b].press == kPanel) app::ToggleMenu();
         if (kButtons[b].press == kGyro) gyro::NextMode();
     } else if (InMenus() && std::hypot(x - g_layout[kStick].x * Width(), y - g_layout[kStick].y * Height()) <= Radius(kStick)) {
@@ -1067,6 +1124,11 @@ void KeyEvent(const SDL_KeyboardEvent& k) {
 
 bool OnEvent(const SDL_Event& e) {
     switch (e.type) {
+        case SDL_EVENT_DID_ENTER_FOREGROUND:
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            g_reload_layout = true;
+            g_reload_input = true;
+            return false;
         case SDL_EVENT_WILL_ENTER_BACKGROUND:
         case SDL_EVENT_DID_ENTER_BACKGROUND:
         case SDL_EVENT_WINDOW_FOCUS_LOST:
@@ -1151,6 +1213,8 @@ bool OnEvent(const SDL_Event& e) {
 void Apply(int port, input::Pad& pad) {
     if (port != 0) return;
     std::lock_guard lock(g_lock);
+    EnsureLayout();
+    ReloadLauncherInput();
     SyncContext();
     if (g_editing || !input::Active()) return;
     bool used = false;
@@ -1227,6 +1291,19 @@ struct Pen {
 
 void DrawIcon(const Pen& p, Icon icon) {
     switch (icon) {
+        case Icon::Wrench:
+            p.Line(-0.16f, -0.14f, 0.42f, 0.44f);
+            p.Line(-0.3f, -0.02f, 0.3f, 0.56f);
+            p.Line(-0.3f, -0.02f, -0.52f, -0.16f);
+            p.Line(-0.52f, -0.16f, -0.55f, -0.42f);
+            p.Line(-0.55f, -0.42f, -0.28f, -0.2f);
+            p.Line(-0.28f, -0.2f, -0.12f, -0.36f);
+            p.Line(-0.12f, -0.36f, -0.34f, -0.6f);
+            p.Line(-0.34f, -0.6f, -0.05f, -0.54f);
+            p.Line(-0.05f, -0.54f, 0.04f, -0.3f);
+            p.Line(0.04f, -0.3f, -0.16f, -0.14f);
+            p.Ring(0.39f, 0.49f, 0.13f);
+            break;
         case Icon::Confirm:
             p.Line(-0.45f, 0, -0.1f, 0.32f);
             p.Line(-0.1f, 0.32f, 0.48f, -0.34f);
@@ -1394,7 +1471,7 @@ void DrawEditorBar(ImDrawList* dl, float th) {
                     IM_COL32(255, 255, 255, alpha), app::Ui(kBarLabels[i]).c_str());
     }
     CentredText(dl, ImVec2(Width() / 2, (kBarY + kBarH + 0.05f) * h), h * 0.036f, IM_COL32(255, 255, 255, 220),
-                app::Ui("DRAG TO MOVE, PINCH OR - + TO RESIZE").c_str());
+                app::Ui("ARRASTE PARA MOVER, PINCE OU - + PARA REDIMENSIONAR").c_str());
 }
 
 }  // namespace
@@ -1545,6 +1622,7 @@ bool Firing() {
 void Pump() {
     {
         std::lock_guard lock(g_lock);
+        EnsureLayout();
         SyncContext();
     }
     gyro::Pump();

@@ -9,6 +9,7 @@ namespace {
 bool foreground = true;
 bool panel = false;
 int checks = 0;
+const char* editor_fixture = nullptr;
 
 void Check(bool ok, const char* what, int line) {
     ++checks;
@@ -250,6 +251,71 @@ void MenuStickAndConfirm() {
     CHECK(touch::g_cursor_tap_until > input::NowMs());
 }
 
+void LauncherLayoutResume() {
+    Reset();
+    CHECK(editor_fixture != nullptr);
+    const auto dir=app::ExeDir();
+    std::filesystem::create_directories(dir);
+    const auto file=dir / "layout.toml";
+    touch::SaveLayout();
+    touch::g_loaded=false;
+    touch::EnsureLayout();
+    CHECK(Near(touch::g_layout[0].x,.924f));
+    // The actual Java editor has written a new layout while the native session is paused.
+    Down(1,.924f,.66f);
+    CHECK(Poll().analog[7]==255);
+    SDL_Event background{};background.type=SDL_EVENT_WILL_ENTER_BACKGROUND;
+    touch::OnEvent(background);
+    std::filesystem::copy_file(editor_fixture,file,std::filesystem::copy_options::overwrite_existing);
+    std::ofstream(dir / "black.toml") << "mouse_sensitivity = 2.3\ntouch_sensitivity = 1.7\n";
+    SDL_Event resume{};resume.type=SDL_EVENT_DID_ENTER_FOREGROUND;
+    touch::OnEvent(resume);
+    Poll();
+    CHECK(Near(touch::g_layout[0].x,.42f));
+    CHECK(Near(touch::g_layout[0].y,.52f));
+    CHECK(Near(touch::g_layout[0].r,.07f));
+    CHECK(touch::g_layout[2].hidden);
+    CHECK(Near(touch::g_opacity,.9f)&&Near(touch::g_scale,1.2f));
+    CHECK(Near(game::Opt().mouse_sensitivity,2.3f)&&Near(game::Opt().touch_sensitivity,1.7f));
+    CHECK(Poll().analog[7]==0); // old fingers never stay held across reload
+    Down(2,.42f,.52f);
+    CHECK(Poll().analog[7]==255); // the edited location is the real hitbox
+    Up(2,.42f,.52f);
+    Down(3,.924f,.66f);
+    CHECK(Poll().analog[7]==0); // the old location no longer fires
+    Up(3,.924f,.66f);
+    std::filesystem::remove(file);
+    std::filesystem::remove(dir / "black.toml");
+}
+
+void InGameEditorShortcut() {
+    Reset();
+    std::filesystem::create_directories(app::ExeDir());
+    touch::SaveLayout();
+    Down(10,.585f,.07f);
+    CHECK(touch::g_editing);
+    CHECK(Poll().analog[7]==0);
+    Up(10,.585f,.07f);
+    Down(1,.924f,.66f);
+    CHECK(touch::g_selected==0);
+    Move(1,.80f,.55f);
+    Up(1,.80f,.55f);
+    CHECK(Near(touch::g_layout[0].x,.80f));
+    // Brief focus loss must not discard unsaved edits when the disk file is unchanged.
+    SDL_Event focus{};focus.type=SDL_EVENT_WINDOW_FOCUS_GAINED;
+    touch::OnEvent(focus);
+    touch::EnsureLayout();
+    CHECK(touch::g_editing&&Near(touch::g_layout[0].x,.80f));
+    float save[4];touch::BarAt(0,0,save,touch::kBarDone);
+    Down(2,(save[0]+save[2])/4800.0f,(save[1]+save[3])/2160.0f);
+    CHECK(!touch::g_editing);
+    touch::g_loaded=false;
+    touch::EnsureLayout();
+    CHECK(Near(touch::g_layout[0].x,.80f));
+    std::filesystem::copy_file(app::ExeDir()/"layout.toml",std::string(editor_fixture)+".native",std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::remove(app::ExeDir()/"layout.toml");
+}
+
 void FingerIdentityAndHitAreas() {
     Reset();
     Finger(SDL_EVENT_FINGER_DOWN, 7, .10f, .70f, 1);
@@ -280,7 +346,8 @@ void FingerIdentityAndHitAreas() {
 }
 }
 
-int main() {
+int main(int argc,char** argv) {
+    if(argc>1)editor_fixture=argv[1];
     MovementOwnership();
     PreciseLook();
     MoveAimAndFire();
@@ -288,5 +355,7 @@ int main() {
     LifecycleAndMenus();
     FingerIdentityAndHitAreas();
     MenuStickAndConfirm();
+    LauncherLayoutResume();
+    InGameEditorShortcut();
     std::cout << checks << " touch-control regression checks passed\n";
 }

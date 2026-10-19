@@ -41,9 +41,7 @@ jobs:
         env:
           BLACK_TEST_SANITIZE: 1
           ASAN_OPTIONS: detect_leaks=0
-        run: |
-          bash tests/run-touch-tests.sh
-          bash tests/run-launcher-settings-tests.sh
+        run: bash tests/run-touch-tests.sh
 
   build:
     needs: controls-tests

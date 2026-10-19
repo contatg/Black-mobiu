@@ -1,6 +1,7 @@
 package com.racas.black;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -8,12 +9,15 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.Button;
@@ -48,10 +52,7 @@ public final class LauncherActivity extends Activity {
         if (own == null) own = getFilesDir();
         importer = new GameImporter(this);
         try {
-            File file = new File(own, "black.toml");
-            game = new LauncherSettings(file);
-            if (!file.exists()) game.put("render_percent", 67);
-            layout = new LauncherSettings(new File(own, "layout.toml"));
+            loadSettings();
             page = state != null ? state.getInt("page", 0) : 0;
             showPage(page);
         } catch (IOException e) {
@@ -72,7 +73,16 @@ public final class LauncherActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume();
-        if (game != null && !editing && !importing) showPage(page);
+        if (game != null && !editing && !importing) {
+            try { loadSettings(); showPage(page); }
+            catch (IOException e) { Toast.makeText(this,"Não foi possível reler as configurações.",Toast.LENGTH_LONG).show(); }
+        }
+    }
+    private void loadSettings() throws IOException {
+        File file=new File(own,"black.toml");
+        game=new LauncherSettings(file);
+        if(!file.exists())game.put("render_percent",67);
+        layout=new LauncherSettings(new File(own,"layout.toml"));
     }
     @Override protected void onSaveInstanceState(Bundle b) {
         b.putInt("page", page);
@@ -80,10 +90,10 @@ public final class LauncherActivity extends Activity {
     }
     @Override public void onBackPressed() {
         if (editing) {
-            new AlertDialog.Builder(this).setTitle("Sair do editor?")
-                    .setMessage("As alterações ainda não salvas serão descartadas.")
-                    .setNegativeButton("Continuar editando", null)
-                    .setPositiveButton("Descartar", (d,w) -> { editing = false; showPage(1); }).show();
+            choices("Sair do editor?", "Salve o layout para usar as alterações no jogo.",
+                    new String[]{"Continuar editando", "Descartar alterações"},
+                    new String[]{"Voltar para ajustar os botões", "Manter o último layout salvo"}, -1,
+                    new Runnable[]{()->{}, ()->{editing=false;showPage(1);}});
         } else if (page != 0) showPage(0);
         else super.onBackPressed();
     }
@@ -130,7 +140,7 @@ public final class LauncherActivity extends Activity {
         rail.setBackground(shape(Color.rgb(17,20,24),16)); shell.addView(rail,new LinearLayout.LayoutParams(dp(148),-1));
         TextView brand = title("BLACK",26); brand.setLetterSpacing(.12f); rail.addView(brand);
         TextView sub = label("MOBILE  /  ARM64",9,GOLD); sub.setLetterSpacing(.12f); rail.addView(sub); gap(rail,28);
-        String[] tabs = {"01   Início", "02   Controles", "03   Sensibilidade"};
+        String[] tabs = {"01   Início", "02   Controles", "03   Mira"};
         for (int i=0;i<tabs.length;i++) {
             final int ix=i;
             Button b=button(tabs[i],false,()->showPage(ix));
@@ -213,11 +223,14 @@ public final class LauncherActivity extends Activity {
             LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(10),dp(6),dp(10),dp(6));
             vertical.addView(bar,new LinearLayout.LayoutParams(-1,dp(54)));
             TextView title=title("Editor de controles",16);bar.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-            bar.addView(button("Presets",false,()->new AlertDialog.Builder(this).setTitle("Escolher layout")
-                    .setItems(new String[]{"2 dedos","3 dedos","4 dedos"},(d,which)->editor.preset(which)).show()));
+            bar.addView(button("Presets",false,()->choices("Escolha seu layout", "Use como ponto de partida. Depois, arraste os botões e toque em Salvar.",
+                    new String[]{"2 dedos", "3 dedos", "4 dedos"},
+                    new String[]{"Tradicional · os dois polegares", "Claw · indicador esquerdo para atirar", "Claw · dois indicadores e dois polegares"}, editor.currentPreset(),
+                    new Runnable[]{()->editor.preset(0),()->editor.preset(1),()->editor.preset(2)})));
             bar.addView(button("Cancelar",false,()->onBackPressed()));
             bar.addView(button("Salvar",true,()->{
-                try {editor.save();layout=new LauncherSettings(new File(own,"layout.toml"));editing=false;showPage(1);}
+                try {editor.save();layout=new LauncherSettings(new File(own,"layout.toml"));editing=false;showPage(1);
+                    Toast.makeText(this,"Layout salvo. Será aplicado ao entrar ou voltar ao jogo.",Toast.LENGTH_SHORT).show();}
                 catch(IOException e){Toast.makeText(this,"Não foi possível salvar o layout.",Toast.LENGTH_LONG).show();}
             }));
             vertical.addView(editor,new LinearLayout.LayoutParams(-1,0,1));
@@ -237,14 +250,51 @@ public final class LauncherActivity extends Activity {
         for(File f:files)if(f.isFile()&&(f.getName().equalsIgnoreCase("default.xbe")||f.getName().toLowerCase(Locale.ROOT).endsWith(".iso")))return true;
         return false;
     }
+    // Card selectors avoid the platform's old, cramped three-button bar.
+    private void choices(String name, String description, String[] names, String[] descriptions, int selected, Runnable[] actions) {
+        Dialog dialog=new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout panel=column();panel.setPadding(dp(24),dp(22),dp(24),dp(18));
+        GradientDrawable background=shape(PANEL,24);background.setStroke(dp(1),Color.rgb(52,59,67));panel.setBackground(background);
+        TextView tag=label("BLACK  /  CONFIGURAR",10,GOLD);tag.setLetterSpacing(.16f);panel.addView(tag);gap(panel,8);
+        panel.addView(title(name,23));
+        TextView body=label(description,13,MUTED);body.setPadding(0,dp(8),0,dp(16));panel.addView(body);
+        for(int i=0;i<names.length;i++){
+            final int index=i;boolean active=i==selected;
+            LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(16),dp(13),dp(16),dp(13));
+            GradientDrawable card=shape(active?Color.rgb(55,45,28):Color.rgb(32,37,44),14);
+            card.setStroke(dp(1),active?GOLD:Color.rgb(53,60,69));
+            row.setBackground(new RippleDrawable(ColorStateList.valueOf(0x30EFB85A),card,shape(Color.WHITE,14)));
+            TextView indicator=label(active?"●":"○",20,active?GOLD:MUTED);row.addView(indicator,new LinearLayout.LayoutParams(dp(35),-2));
+            LinearLayout words=column();words.addView(title(names[i],15));
+            TextView detail=label(descriptions[i],12,MUTED);detail.setPadding(0,dp(3),0,0);words.addView(detail);
+            row.addView(words,new LinearLayout.LayoutParams(0,-2,1));
+            TextView arrow=label("›",25,GOLD);row.addView(arrow);
+            row.setFocusable(true);row.setClickable(true);row.setContentDescription(names[i]+". "+descriptions[i]);
+            row.setOnClickListener(v->{dialog.dismiss();actions[index].run();});
+            LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(8);panel.addView(row,rp);
+        }
+        Button back=button("Voltar",false,dialog::dismiss);back.setBackground(shape(Color.TRANSPARENT,12));
+        panel.addView(back,new LinearLayout.LayoutParams(-1,dp(42)));
+        ScrollView scroll=new ScrollView(this);scroll.addView(panel);scroll.setFillViewport(false);
+        dialog.setContentView(scroll);dialog.show();
+        if(dialog.getWindow()!=null){
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int width=Math.min(dp(600),Math.round(getResources().getDisplayMetrics().widthPixels*.87f));
+            int maxHeight=Math.round(getResources().getDisplayMetrics().heightPixels*.91f);
+            scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(maxHeight,View.MeasureSpec.AT_MOST));
+            dialog.getWindow().setLayout(width,Math.min(scroll.getMeasuredHeight(),maxHeight));
+            dialog.getWindow().setDimAmount(.68f);
+        }
+    }
     private void addGame() {
-        new AlertDialog.Builder(this).setTitle("Arquivos do jogo")
-                .setMessage("Coloque sua ISO ou default.xbe com as pastas em /storage/emulated/0/Black.\n\nVocê também pode importar uma ISO para a pasta do aplicativo.")
-                .setPositiveButton("Importar ISO",(d,w)->{importing=importer.pick();})
-                .setNeutralButton("Permitir acesso à pasta Black",(d,w)->{
+        choices("Adicione seu jogo", "Escolha como acessar os arquivos da sua cópia do Black.",
+                new String[]{"Importar uma ISO", "Usar a pasta Black"},
+                new String[]{"Escolher no celular, pendrive ou nuvem", "/storage/emulated/0/Black · autorizar acesso"}, -1,
+                new Runnable[]{()->{importing=importer.pick();}, ()->{
                     try {startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,Uri.parse("package:"+getPackageName())));}
                     catch(ActivityNotFoundException e){startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));}
-                }).setNegativeButton("Voltar",null).show();
+                }});
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
@@ -255,7 +305,7 @@ public final class LauncherActivity extends Activity {
     }
     private void launch() {
         startActivity(new Intent(this,BlackActivity.class));
-        // Do not expose settings while the running native game owns the same files.
+        // Native input reloads the launcher files when this session resumes.
         finish();
     }
 }
