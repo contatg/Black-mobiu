@@ -1,0 +1,46 @@
+name: Publish existing APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-release.yml]
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: publish-black-controles-2
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verify successful source build
+        run: |
+          set -euo pipefail
+          conclusion=$(gh api repos/$GH_REPO/actions/runs/39241809005 --jq .conclusion)
+          sha=$(gh api repos/$GH_REPO/actions/runs/39241809005 --jq .head_sha)
+          test "$conclusion" = success
+          test "$sha" = f1660e3bbfe090dc9f5ff0e734b5c6578144abc5
+      - name: Download compiled APK
+        run: |
+          set -euo pipefail
+          gh run download 39241809005 --name Black-1.3.1-controles.2 --dir apk
+          test -s apk/Black-1.3.1-controles.2.apk
+      - name: Publish release
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'NOTES'
+          APK Android ARM64 com correções dos controles de toque.
+
+          - Movimento com múltiplos dedos e maior precisão de mira.
+          - Arrastar pelo botão de mira e opção de segurar para mirar.
+          - Toques rápidos preservados e gestos liberados ao pausar ou perder o foco.
+
+          Compilação e testes automatizados dos controles concluídos com sucesso. Gameplay e desempenho ainda precisam ser verificados em aparelhos reais.
+
+          Extraia os arquivos da sua própria cópia do jogo em /storage/emulated/0/Black. O APK não inclui os arquivos do jogo.
+          NOTES
+          gh release create v1.3.1-controles.2 apk/Black-1.3.1-controles.2.apk --target f1660e3bbfe090dc9f5ff0e734b5c6578144abc5 --title "Black Android 1.3.1 — Controles" --notes-file notes.md --latest
