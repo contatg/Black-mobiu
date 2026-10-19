@@ -24,6 +24,8 @@ jobs:
           sha=$(gh api repos/$GH_REPO/actions/runs/39249358203 --jq .head_sha)
           test "$conclusion" = success
           test "$sha" = 04fc152d1b63d424bb8fa89951fc5b8c11a834f9
+          changed=$(gh api "repos/$GH_REPO/compare/04fc152d1b63d424bb8fa89951fc5b8c11a834f9...$GITHUB_SHA" --jq '[.files[].filename | select(. != ".github/workflows/publish-release.yml")] | length')
+          test "$changed" = 0
       - name: Download compiled APK
         run: |
           set -euo pipefail
@@ -52,4 +54,4 @@ jobs:
           NOTES
           printf '\nSHA-256 do APK: ' >> notes.md
           sha256sum apk/Black-1.3.2-launcher-teste.5.apk | cut -d' ' -f1 >> notes.md
-          gh release create v1.3.2-launcher-teste.5 apk/Black-1.3.2-launcher-teste.5.apk --target 04fc152d1b63d424bb8fa89951fc5b8c11a834f9 --title "Black Android 1.3.2 — Launcher e controles" --notes-file notes.md --latest
+          gh release create v1.3.2-launcher-teste.5 apk/Black-1.3.2-launcher-teste.5.apk --target "$GITHUB_SHA" --title "Black Android 1.3.2 — Launcher e controles" --notes-file notes.md --latest
