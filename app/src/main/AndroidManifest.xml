@@ -20,7 +20,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
-        android:label="@string/app_name"
+        android:label="${blackLabel}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
@@ -31,18 +31,25 @@
         android:isGame="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
-        <activity
-            android:name=".BlackActivity"
-            android:label="@string/app_name"
+        <activity android:name=".LauncherActivity"
             android:exported="true"
             android:screenOrientation="sensorLandscape"
-            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
-            android:preferMinimalPostProcessing="true"
-            android:launchMode="singleInstance">
+            android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".BlackActivity"
+            android:label="@string/app_name"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:preferMinimalPostProcessing="true"
+            android:launchMode="singleInstance">
+
         </activity>
     </application>
 </manifest>

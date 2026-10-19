@@ -41,7 +41,9 @@ jobs:
         env:
           BLACK_TEST_SANITIZE: 1
           ASAN_OPTIONS: detect_leaks=0
-        run: bash tests/run-touch-tests.sh
+        run: |
+          bash tests/run-touch-tests.sh
+          bash tests/run-launcher-settings-tests.sh
 
   build:
     needs: controls-tests
@@ -115,10 +117,12 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             name="${GITHUB_REF_NAME#v}"
           else
-            name="1.3.1-controles.$GITHUB_RUN_NUMBER"
+            name="1.3.2-launcher-teste.$GITHUB_RUN_NUMBER"
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "GRADLE_ARGS=-PversionCode=$((100000 + GITHUB_RUN_NUMBER)) -PversionName=$name" >> "$GITHUB_ENV"
+          preview=""
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then preview=" -PlauncherPreview"; fi
+          echo "GRADLE_ARGS=$preview -PversionCode=$((100000 + GITHUB_RUN_NUMBER)) -PversionName=$name" >> "$GITHUB_ENV"
 
       - name: Build
         shell: cmd

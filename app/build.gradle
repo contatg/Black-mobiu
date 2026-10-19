@@ -23,6 +23,10 @@ android {
 
     defaultConfig {
         applicationId "com.racas.black"
+        if (project.hasProperty("launcherPreview")) {
+            applicationIdSuffix ".preview"
+        }
+        manifestPlaceholders = [blackLabel: project.hasProperty("launcherPreview") ? "Black Preview" : "@string/app_name"]
         minSdk 30
         targetSdk 34
         // -PversionCode=<n> -PversionName=<name>: the release workflow sets them from the tag

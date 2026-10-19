@@ -75,8 +75,8 @@ std::string Wording(uint32_t id, const std::string& pad, bool keyboard, bool tou
     Replace(text, "XBOX", "PC");
     Replace(text, "Xbox", "PC");
     if (touch && !keyboard) {
-        if (id == kSelect) text = "(DRAG) " + text;
-        else if (id == kConfirm) text = "(TAP) " + text;
+        if (id == kSelect) text = "(ANALOG) " + text;
+        else if (id == kConfirm) text = "(ENTER) " + text;
         else if (id == kBack || id == kBackspace) text = "(<) " + text;
         else if (PressStart(id)) {
             Replace(text, "START", "ANYWHERE");

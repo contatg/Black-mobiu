@@ -217,6 +217,35 @@ void LifecycleAndMenus() {
     CHECK(Poll().analog[7] == 0);
 }
 
+void MenuStickAndConfirm() {
+    Reset();
+    input::SetMenu(true);
+    // A previous direct tap must not keep overriding stick navigation with a cursor.
+    Down(1, .6f, .5f);
+    Up(1, .6f, .5f);
+    CHECK(touch::g_cursor_touch);
+    Down(2, .108f, .70f);
+    Move(2, .108f, .58f);
+    CHECK(Poll().ly > 20000);
+    CHECK(!touch::g_cursor_touch && touch::g_cursor_tap_until == 0);
+    CHECK(!input::LeftButton());
+    Up(2, .108f, .58f);
+    CHECK(Poll().ly == 0);
+    // ENTER is the same analog A/confirm input the game already reads.
+    Down(3, .89f, .73f);
+    Up(3, .89f, .73f);
+    CHECK(Poll().analog[0] == 255);
+    CHECK(Poll().analog[0] == 0);
+    Down(4, .89f, .73f);
+    input::SetMenu(false);
+    CHECK(Poll().analog[0] == 0);
+    Reset();
+    input::SetMenu(true);
+    Down(5, .6f, .5f);
+    Up(5, .6f, .5f);
+    CHECK(touch::g_cursor_tap_until > input::NowMs());
+}
+
 void FingerIdentityAndHitAreas() {
     Reset();
     Finger(SDL_EVENT_FINGER_DOWN, 7, .10f, .70f, 1);
@@ -254,5 +283,6 @@ int main() {
     TapsAndCancellation();
     LifecycleAndMenus();
     FingerIdentityAndHitAreas();
+    MenuStickAndConfirm();
     std::cout << checks << " touch-control regression checks passed\n";
 }

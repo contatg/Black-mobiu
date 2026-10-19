@@ -511,7 +511,7 @@ enum class Role : uint8_t { None, Stick, Look, Button, Cursor, Drag, Pinch };
 // the host. Where it sits is the layout's, which the player edits and picks presets for
 enum : int { kGyro = -2, kPanel = -1, kAnalogA = 0, kAnalogB = 1, kAnalogX = 2, kAnalogY = 3, kAnalogLT = 6, kAnalogRT = 7 };
 constexpr int kBit = 8;  // kBit + n: buttons bit n (dpad up down left right, start, back, left thumb, right thumb)
-enum class Icon : uint8_t { Bullet, Scope, Mode, Reload, Crouch, Knife, Hand, Grenade, Swap, Health, Map, Pause, Gear, Back, Gyro, Move, Suppressor };
+enum class Icon : uint8_t { Bullet, Scope, Mode, Reload, Crouch, Knife, Hand, Grenade, Swap, Health, Map, Pause, Gear, Back, Gyro, Move, Suppressor, Confirm };
 enum class When : uint8_t { Play, Menus, Both };
 struct Button {
     const char* id;     // its key in layout.toml
@@ -541,6 +541,7 @@ constexpr Button kButtons[] = {
     {"gyro", "Gyroscope", Icon::Gyro, kGyro, When::Play},
     {"back", "Back", Icon::Back, kAnalogB, When::Menus, false, true},
     {"suppressor", "Suppressor", Icon::Suppressor, kAnalogY, When::Play},
+    {"confirm", "Enter", Icon::Confirm, kAnalogA, When::Menus, false, true},
 };
 constexpr size_t kButtonCount = std::size(kButtons);
 constexpr size_t kStick = kButtonCount;  // the stick's place, after the buttons'
@@ -557,7 +558,7 @@ constexpr Layout kTwoFinger = {{
     {0.843f, 0.56f, 0.05f}, {0.789f, 0.40f, 0.055f}, {0.784f, 0.70f, 0.05f}, {0.838f, 0.84f, 0.055f},
     {0.964f, 0.88f, 0.05f}, {0.50f, 0.90f, 0.05f}, {0.559f, 0.90f, 0.045f}, {0.473f, 0.07f, 0.04f},
     {0.527f, 0.07f, 0.04f}, {0.419f, 0.07f, 0.04f},
-    {0.036f, 0.08f, 0.045f}, {0.70f, 0.56f, 0.042f}, {0.108f, 0.70f, 0.12f},
+    {0.036f, 0.08f, 0.045f}, {0.70f, 0.56f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.108f, 0.70f, 0.12f},
 }};
 // claw with the left index finger: fire at the top left, the right thumb turns and aims
 constexpr Layout kThreeFinger = {{
@@ -565,7 +566,7 @@ constexpr Layout kThreeFinger = {{
     {0.80f, 0.60f, 0.045f}, {0.765f, 0.40f, 0.05f}, {0.745f, 0.76f, 0.045f}, {0.84f, 0.87f, 0.05f},
     {0.955f, 0.88f, 0.05f}, {0.50f, 0.90f, 0.05f}, {0.559f, 0.90f, 0.045f}, {0.473f, 0.07f, 0.04f},
     {0.527f, 0.07f, 0.04f}, {0.419f, 0.07f, 0.04f},
-    {0.036f, 0.08f, 0.045f}, {0.69f, 0.56f, 0.042f}, {0.13f, 0.72f, 0.12f},
+    {0.036f, 0.08f, 0.045f}, {0.69f, 0.56f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.13f, 0.72f, 0.12f},
 }};
 // both index fingers on top: fire at the top left, aim and crouch at the top right
 constexpr Layout kFourFinger = {{
@@ -573,7 +574,7 @@ constexpr Layout kFourFinger = {{
     {0.78f, 0.55f, 0.045f}, {0.73f, 0.38f, 0.05f}, {0.72f, 0.75f, 0.045f}, {0.80f, 0.87f, 0.05f},
     {0.83f, 0.24f, 0.05f}, {0.50f, 0.90f, 0.05f}, {0.559f, 0.90f, 0.045f}, {0.473f, 0.07f, 0.04f},
     {0.527f, 0.07f, 0.04f}, {0.419f, 0.07f, 0.04f},
-    {0.036f, 0.08f, 0.045f}, {0.655f, 0.55f, 0.042f}, {0.13f, 0.72f, 0.12f},
+    {0.036f, 0.08f, 0.045f}, {0.655f, 0.55f, 0.042f}, {0.89f, 0.73f, 0.075f}, {0.13f, 0.72f, 0.12f},
 }};
 struct Preset {
     const char* id;
@@ -700,7 +701,7 @@ bool InMenus() { return input::g_menu; }
 
 bool ButtonShown(size_t i) {
     const Button& b = kButtons[i];
-    if (g_editing) return b.when != When::Menus;
+    if (g_editing) return true;
     if (g_layout[i].hidden) return false;
     return b.when == When::Both || (b.when == When::Menus) == InMenus();
 }
@@ -905,8 +906,19 @@ void FingerDown(SDL_TouchID touch, SDL_FingerID id, float x, float y) {
     if (b < kButtonCount) {
         f.role = Role::Button;
         f.button = b;
+        if (InMenus()) {
+            g_cursor_touch = false;
+            g_cursor_down = false;
+            g_cursor_tap_until = 0;
+        }
         if (kButtons[b].press == kPanel) app::ToggleMenu();
         if (kButtons[b].press == kGyro) gyro::NextMode();
+    } else if (InMenus() && std::hypot(x - g_layout[kStick].x * Width(), y - g_layout[kStick].y * Height()) <= Radius(kStick)) {
+        g_cursor_touch = false;
+        g_cursor_down = false;
+        g_cursor_tap_until = 0;
+        if (std::none_of(g_fingers.begin(), g_fingers.end(), [](const Finger& other) { return other.role == Role::Stick; }))
+            f.role = Role::Stick;
     } else if (InMenus()) {
         // not the cursor yet: a tap clicks where it lifts, a swipe scrolls without moving the cursor
         f.role = Role::Cursor;
@@ -1215,6 +1227,10 @@ struct Pen {
 
 void DrawIcon(const Pen& p, Icon icon) {
     switch (icon) {
+        case Icon::Confirm:
+            p.Line(-0.45f, 0, -0.1f, 0.32f);
+            p.Line(-0.1f, 0.32f, 0.48f, -0.34f);
+            break;
         case Icon::Bullet:
             p.Cartridge(0, -0.48f, 0.34f, 0.96f);
             break;
@@ -1405,8 +1421,8 @@ void Draw() {
         dl->AddCircleFilled(ImVec2(cx, cy), r, on ? Fade(255, 255, 255, 70) : Fade(0, 0, 0, 80 * fade / 100), 48);
         dl->AddCircle(ImVec2(cx, cy), r, Fade(255, 255, 255, 60 * fade / 100), 48, th * 0.6f);
         DrawIcon({dl, ImVec2(cx, cy), r, on ? Fade(255, 255, 255, 230) : Fade(255, 255, 255, 180 * fade / 100), th}, b.icon);
-        if (b.press == kGyro) {
-            const char* mode = gyro::ModeName();
+        if (b.press == kGyro || b.icon == Icon::Confirm) {
+            const char* mode = b.icon == Icon::Confirm ? "ENTER" : gyro::ModeName();
             float fs = r * 0.55f;
             ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, mode);
             dl->AddText(ImGui::GetFont(), fs, ImVec2(cx - ts.x / 2, cy + r * 1.08f), Fade(255, 255, 255, 180), mode);
@@ -1418,7 +1434,7 @@ void Draw() {
             dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), IM_COL32(255, 80, 60, 220), th);
         }
     }
-    if (editing || (!InMenus() && !app::MenuOpen())) DrawStick(dl, th);
+    if (editing || !app::MenuOpen()) DrawStick(dl, th);
     if (editing) {
         if (g_selected == int(kStick)) {
             ImVec2 at(g_layout[kStick].x * Width(), g_layout[kStick].y * h);
@@ -1580,7 +1596,7 @@ bool LeftButton() {
     if (Down(VK_LBUTTON)) return true;
     std::lock_guard lock(touch::g_lock);
     return std::any_of(touch::g_fingers.begin(), touch::g_fingers.end(),
-                       [](const touch::Finger& f) { return f.role != touch::Role::Button; });
+                       [](const touch::Finger& f) { return f.role == touch::Role::Cursor; });
 }
 
 }  // namespace input
@@ -1595,7 +1611,7 @@ std::string TouchName(int button) {
     std::lock_guard lock(touch::g_lock);
     for (size_t i = 0; i < touch::kButtonCount; i++) {
         const touch::Button& b = touch::kButtons[i];
-        if (b.press != press || touch::g_layout[i].hidden) continue;
+        if (b.press != press || !touch::ButtonShown(i)) continue;
         std::string name = b.label;
         if (size_t paren = name.find(" ("); paren != std::string::npos) name.resize(paren);
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
