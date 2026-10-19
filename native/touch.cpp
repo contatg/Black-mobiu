@@ -1596,7 +1596,10 @@ bool LeftButton() {
     if (Down(VK_LBUTTON)) return true;
     std::lock_guard lock(touch::g_lock);
     return std::any_of(touch::g_fingers.begin(), touch::g_fingers.end(),
-                       [](const touch::Finger& f) { return f.role == touch::Role::Cursor; });
+                       [](const touch::Finger& f) {
+                           return f.role == touch::Role::Cursor || (!touch::InMenus() &&
+                                  (f.role == touch::Role::Stick || f.role == touch::Role::Look));
+                       });
 }
 
 }  // namespace input

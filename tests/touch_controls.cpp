@@ -219,6 +219,10 @@ void LifecycleAndMenus() {
 
 void MenuStickAndConfirm() {
     Reset();
+    input::g_settle = false;
+    Down(9, .6f, .5f);
+    CHECK(input::LeftButton());  // tapping a film still skips it
+    Up(9, .6f, .5f);
     input::SetMenu(true);
     // A previous direct tap must not keep overriding stick navigation with a cursor.
     Down(1, .6f, .5f);

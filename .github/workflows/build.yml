@@ -124,6 +124,13 @@ jobs:
           if [[ "$GITHUB_REF" != refs/tags/v* ]]; then preview=" -PlauncherPreview"; fi
           echo "GRADLE_ARGS=$preview -PversionCode=$((100000 + GITHUB_RUN_NUMBER)) -PversionName=$name" >> "$GITHUB_ENV"
 
+      - name: Preserve preview signing key
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: black-preview-signing-v1
+
       - name: Build
         shell: cmd
         run: call build.bat
